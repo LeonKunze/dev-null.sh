@@ -5,9 +5,13 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Enums\CommitStatus;
+use App\Enums\ConnectionType;
 use App\Models\Commit;
 use App\Models\LinkPreview;
 use App\Models\User;
+use App\Queries\MacAppReleaseQuery;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Number;
 use Illuminate\Support\Str;
 
 /**
@@ -15,8 +19,10 @@ use Illuminate\Support\Str;
  * @phpstan-type Feed array{url: string, title: string}
  * @phpstan-type WebsiteMetadata array{type: string, title: string, description: string, url: string, robots: string, images: list<Image>, structuredData: array<string, mixed>}
  * @phpstan-type CommitMetadata array{type: string, title: string, description: string, url: string, robots: string, images: list<Image>, publishedAt: string, author: string, feed: Feed, structuredData: array<string, mixed>}
- * @phpstan-type UserMetadata array{type: string, title: string, description: string, url: string, robots: string, images: list<Image>, feed: Feed, username: string, structuredData: array<string, mixed>}
- * @phpstan-type ConnectionsMetadata array{type: string, title: string, description: string, url: string, robots: string, images: list<Image>, username: string}
+ * @phpstan-type UserMetadata array{type: string, title: string, description: string, url: string, robots: string, images: list<Image>, feed: Feed, handle: string, structuredData: array<string, mixed>}
+ * @phpstan-type ConnectionsMetadata array{type: string, title: string, description: string, url: string, robots: string, images: list<Image>, handle: string}
+ *
+ * @phpstan-import-type MacAppRelease from MacAppReleaseQuery
  */
 final readonly class PageMetadata
 {
@@ -116,6 +122,53 @@ final readonly class PageMetadata
                 'description' => $description,
                 'inLanguage' => str_replace('_', '-', app()->getLocale()),
                 'isPartOf' => ['@id' => route('home').'#website'],
+            ],
+        ];
+    }
+
+    /**
+     * The link preview and structured data of the apps page, with the Mac app described as software once it is published.
+     *
+     * @param  MacAppRelease|null  $release
+     * @return WebsiteMetadata
+     */
+    public function apps(?array $release): array
+    {
+        $url = route('app.index');
+        $page = $this->page(
+            'Apps - /dev/null',
+            '/dev/null for Mac: your remotes and orgs in a native app, with pull receipts, voice notes, reactions, and banners that never show what a message says.',
+            $url,
+        );
+
+        return [
+            ...$page,
+            'images' => [[
+                'url' => url('/images/apps/og.png'),
+                'width' => OpenGraphCanvas::WIDTH,
+                'height' => OpenGraphCanvas::HEIGHT,
+                'type' => 'image/png',
+                'alt' => '/dev/null for Mac, showing an org of developers talking in remotes',
+            ]],
+            'structuredData' => [
+                '@context' => 'https://schema.org',
+                '@graph' => [
+                    Arr::except($page['structuredData'], '@context'),
+                    ...$release === null ? [] : [[
+                        '@type' => 'SoftwareApplication',
+                        'name' => '/dev/null for Mac',
+                        'url' => $url,
+                        'operatingSystem' => "macOS {$release['minimum_system_version']} or later",
+                        'applicationCategory' => 'SocialNetworkingApplication',
+                        'softwareVersion' => $release['version'],
+                        'datePublished' => $release['released_at'],
+                        'downloadUrl' => $release['download_url'],
+                        'fileSize' => Number::fileSize($release['size'], precision: 1),
+                        'image' => url('/images/apps/mac-icon-light.webp'),
+                        'screenshot' => url('/images/apps/mac.webp'),
+                        'offers' => ['@type' => 'Offer', 'price' => '0', 'priceCurrency' => 'USD'],
+                    ]],
+                ],
             ],
         ];
     }
@@ -221,7 +274,7 @@ final readonly class PageMetadata
             'robots' => self::INDEXABLE,
             'images' => [$this->profileImage($user, $title)],
             'feed' => $this->feed($user),
-            'username' => $user->username,
+            'handle' => $user->handle,
             'structuredData' => [
                 '@context' => 'https://schema.org',
                 '@type' => 'ProfilePage',
@@ -233,7 +286,7 @@ final readonly class PageMetadata
                     ...$user->bio !== null ? ['description' => $user->bio] : [],
                     ...$user->avatar_url !== null ? ['image' => $user->avatar_url] : [],
                     'sameAs' => [
-                        "https://github.com/{$user->username}",
+                        "https://github.com/{$user->handle}",
                         ...filled($user->website) ? [$user->website] : [],
                     ],
                     'interactionStatistic' => [
@@ -246,27 +299,31 @@ final readonly class PageMetadata
     }
 
     /**
-     * The link preview of who follows a profile, or who it follows. The lists are thin pages, so they are not indexed, though their links are followed.
+     * The link preview of who follows a profile, who it follows, or who of those follow it back. The lists are thin pages, so they are not indexed, though their links are followed.
      *
-     * @param  'followers'|'following'  $type
+     * @param  ConnectionType::Followers|ConnectionType::Following|ConnectionType::Mutuals  $type
      * @return ConnectionsMetadata
      */
-    public function connections(User $user, string $type): array
+    public function connections(User $user, ConnectionType $type): array
     {
-        $title = $type === 'followers'
-            ? "People following {$user->nameWithHandle()} on /dev/null"
-            : "People followed by {$user->nameWithHandle()} on /dev/null";
+        $title = match ($type) {
+            ConnectionType::Followers => "People following {$user->nameWithHandle()} on /dev/null",
+            ConnectionType::Following => "People followed by {$user->nameWithHandle()} on /dev/null",
+            ConnectionType::Mutuals => "Mutuals of {$user->nameWithHandle()} on /dev/null",
+        };
 
         return [
             'type' => 'profile',
             'title' => $title,
-            'description' => $type === 'followers'
-                ? "See who follows {$user->mention()} on /dev/null, a social network for developers."
-                : "See who {$user->mention()} follows on /dev/null, a social network for developers.",
-            'url' => route($type === 'followers' ? 'user-followers.index' : 'user-following.index', $user),
+            'description' => match ($type) {
+                ConnectionType::Followers => "See who follows {$user->mention()} on /dev/null, a social network for developers.",
+                ConnectionType::Following => "See who {$user->mention()} follows on /dev/null, a social network for developers.",
+                ConnectionType::Mutuals => "See who follows {$user->mention()} back on /dev/null, a social network for developers.",
+            },
+            'url' => route("user-{$type->value}.index", $user),
             'robots' => self::NOT_INDEXABLE,
             'images' => [$this->profileImage($user, $title)],
-            'username' => $user->username,
+            'handle' => $user->handle,
         ];
     }
 

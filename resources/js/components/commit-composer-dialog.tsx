@@ -6,6 +6,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { useSharedState } from '@/hooks/use-shared-state';
+import type { IssueKind } from '@/lib/issue-commands';
 
 const bodyId = 'commit-dialog-body';
 
@@ -43,12 +44,17 @@ export function useCommitDialogClosedCount(): number {
     return closedCount;
 }
 
+/**
+ * Opens as a feature request or bug report when given an issue, as if `/feature` or `/bug` had been typed.
+ */
 export function CommitComposerDialog({
     open,
     onOpenChange,
+    issue = null,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    issue?: IssueKind | null;
 }) {
     const [, setClosedCount] = useSharedState<number>(closedCountKey, 0);
 
@@ -71,9 +77,10 @@ export function CommitComposerDialog({
                     onEscapeKeyDown={(event) => {
                         if (
                             document.querySelector(
-                                '[data-mention-suggestions], [data-command-suggestions]',
+                                '[data-mention-suggestions], [data-command-suggestions], [role="dialog"].yarl__root',
                             ) ||
-                            (event.target instanceof Element &&
+                            (typeof Element !== 'undefined' &&
+                                event.target instanceof Element &&
                                 event.target.closest('[data-composer-preview]'))
                         ) {
                             event.preventDefault();
@@ -81,9 +88,10 @@ export function CommitComposerDialog({
                     }}
                     onInteractOutside={(event) => {
                         if (
+                            typeof Element !== 'undefined' &&
                             event.target instanceof Element &&
                             event.target.closest(
-                                '[data-mention-suggestions], [data-command-suggestions]',
+                                '[data-mention-suggestions], [data-command-suggestions], [role="dialog"].yarl__root',
                             )
                         ) {
                             event.preventDefault();
@@ -101,6 +109,7 @@ export function CommitComposerDialog({
                     <CommitComposer
                         id={bodyId}
                         isInDialog
+                        issue={issue}
                         onCommitted={close}
                     />
                 </DialogContent>

@@ -1,12 +1,13 @@
-import { Head, router } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import { useRef, useState } from 'react';
+import AppController from '@/actions/App/Http/Controllers/AppController';
 import DeviceController from '@/actions/App/Http/Controllers/DeviceController';
 import { Button } from '@/components/ui/button';
 import { WordmarkText } from '@/components/wordmark-text';
 import { useNow } from '@/hooks/use-now';
 import AppLayout from '@/layouts/app-layout';
 import SettingsLayout from '@/layouts/settings/layout';
-import { cn, formatRelativeTime } from '@/lib/utils';
+import { cn, formatFullDateTime, formatRelativeTime } from '@/lib/utils';
 import type { Device } from '@/types';
 
 export default function Index({ devices }: { devices: Device[] }) {
@@ -42,7 +43,14 @@ export default function Index({ devices }: { devices: Device[] }) {
                     <p className="mt-1 max-w-prose text-sm text-pretty text-muted-foreground">
                         Each one can use <WordmarkText>/dev/null</WordmarkText>{' '}
                         as you through the app, since you approved it here on
-                        the web. Revoke any you don't use or don't recognize.
+                        the web. Revoke any you don't use or don't recognize.{' '}
+                        <Link
+                            href={AppController.index()}
+                            className="underline decoration-rail underline-offset-4 hover:decoration-current"
+                        >
+                            Get the Mac app
+                        </Link>
+                        .
                     </p>
                 </header>
 
@@ -236,7 +244,7 @@ function Time({ date, now }: { date: string; now: Date }) {
     return (
         <time
             dateTime={date}
-            title={new Date(date).toLocaleString()}
+            title={formatFullDateTime(date)}
             className="font-mono text-[13px] tabular-nums"
         >
             {relative === 'now'

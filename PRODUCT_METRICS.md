@@ -21,11 +21,9 @@ Each answers the three questions of the [data guidelines](.ai/guidelines/data.bl
 |---|---|---|---|---|
 | The last day a person was seen (a date, no time) | `users.last_seen_at`, hidden | Retention and active users can't be derived from anything else: reading alone leaves no trace. Written at most once a day, without touching `updated_at`. | Admins, only as aggregates on the Growth page; the person in their export | With the account |
 | The number of people seen each day | `active_user_counts` (`seen_at`, `count`), no user ids | The daily active users history: `last_seen_at` only keeps each person's latest day, so past days can't be recomputed. Incremented the first time each person is seen in a day, so the count is exact. | Admins, on the Growth page | Never: it is an anonymous count |
-| Two anonymous events, `guest-visit` and `signup` | Fathom | The conversion rate, counted on both sides by the same tool. No user id is sent. | Admins, through Fathom | Per Fathom's retention |
+| Three anonymous events, `guest-visit`, `signin-click` and `signup` | Fathom | The conversion rate, counted on both sides by the same tool, and where in between visitors give up. No user id is sent. | Admins, through Fathom | Per Fathom's retention |
 
 **Seen** means signed in and opening a page or doing something (starring, replying, following) on the web or the installed app, or using the API from the mobile app or the terminal. Posts automated with the GitHub Action count too: someone who publishes, even automatically, is active. What a page reads on its own (polling for notifications, partial reloads, prefetches, JSON reads) doesn't count, or a tab left open would keep its owner active forever.
-
-Tracking started with the release that added it: visits before that left no trace, and the per-day counts start on that day.
 
 ## The funnel (implemented)
 
@@ -39,6 +37,7 @@ The funnel follows the people who **signed up in the selected range** (the last 
 - Why both sides of the rate come from Fathom: Fathom is blocked by uBlock Origin, Brave and Firefox's tracking protection, which developers use a lot. Signups from the database over visitors from Fathom would overstate the rate by an unknown amount. With both from Fathom, ad blockers hide the same share of each, as long as people who sign up block Fathom as often as other visitors.
 - Why only visitors not signed in: members browsing the site are not prospects; counting them would understate the rate.
 - **Acquisition by day**: a chart of the signups of each day, from the database, or, toggled, of the conversion rate of each day, from Fathom (`date_grouping=day`). One at a time rather than both on one chart with two scales, so neither trend is drawn against the other's; the tooltip of a day tells both. Today's bar is lighter, as the day is still counting. A dashed line marks the average signups of the other days, or the conversion rate of the whole range. A day's Fathom counts are people on that day, so the days don't add up to the range: someone who visits on two days counts on both.
+- **Conversion by device**: the conversion rate of each type of device Fathom tells (phone, desktop, tablet) over the range, with its visitors, the visitors who tapped to sign in, and signups (`field_grouping=device_type` on the three events), next to the rate of all devices from the funnel. The overall rate can fall because more visitors come on phones, which convert less, or because one type of device converts less than before; this tells the two apart. Taps tell a pitch that doesn't convince (few taps) from sign-in at GitHub that people give up on (taps without signups), like on a phone not signed in to GitHub. The browser sends `signin-click` on any tap of a link or button that leaves to sign in, with a beacon so the event survives leaving for GitHub. Each device shows its taps and the share of them that finished (signups ÷ taps), which reads above 100% while the range starts before the release that added taps. Someone who signs up on another device than they visited from counts on the device they signed up from.
 - Caveats:
   - The events only exist since the release that added them; the rate reads "–" before.
   - Fathom's API doesn't define `unique_conversions` precisely; check on real data that it counts people, not events.
@@ -64,7 +63,6 @@ The funnel follows the people who **signed up in the selected range** (the last 
 
 - **Retained**: seen again **from day 1 after signing up, or later** ("unbounded" retention), as told by `last_seen_at`. Day 1 is temporary, while /dev/null is days old and changes day by day; the goal is day 14.
 - **Retention rate** = retained ÷ signups whose day 1 is over. A signup whose day 1 is today isn't counted yet: they may still come back today.
-- Only signups whose day N falls on or after the day tracking started count: someone who came back before tracking started left no trace.
 - Why `last_seen_at` and not one row per person per day: it is one date per person, overwritten, with no history, which is the least data that answers "is this person still coming back after 14 days?".
 - Caveats:
   - Unbounded retention is always higher than the bounded "active on day N" retention that public benchmarks use. Someone who comes back once on day 60 counts as retained at day 1. **Do not compare it with the a16z numbers below.**
